@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Duck Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            background: #87CEEB;
+            display: none;  /* Hide canvas initially */
+            width: 100%;
+            height: 100%;
+        }
+        #scoreBar {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: white;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 1000;
+            display: none;
+        }
+        #titleScreen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #87CEEB;
+            color: #000;
+            z-index: 100;
+        }
+        #gameTitle {
+            font-size: 72px;
+            margin-bottom: 40px;
+            text-shadow: 3px 3px 0 #fff;
+            animation: bounce 1s infinite;
+        }
+        #instructions {
+            font-size: 24px;
+            margin-bottom: 30px;
+            text-align: center;
+            text-shadow: 2px 2px 0 #fff;
+        }
+        #startButton {
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #FFD700;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        #startButton:hover {
+            transform: scale(1.1);
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="titleScreen">
+        <h1 id="gameTitle">Duck Game</h1>
+        <div id="instructions">
+            Press SPACE or W to jump<br>
+            Hold SPACE for consecutive jumps
+        </div>
+        <button id="startButton">Start Game</button>
+    </div>
+    <div id="scoreBar">Distance: 0m</div>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        // Initialize canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const titleScreen = document.getElementById('titleScreen');
+        const startButton = document.getElementById('startButton');
+
+        // Game state
+        const game = {
+            running: false,
+            score: 0,
+            lastFrameTime: 0,
+            frameCount: 0,
+            isResetting: false,
+            secretKeys: [],  // Track secret key combinations
+            secretCooldowns: {},  // Track cooldowns for secret abilities
+            activeEffects: []  // Track active visual effects
+        };
+
+        // Visual effects for shortcuts
+        const EFFECT_COLORS = {
+            superJump: 'rgba(0, 255, 255, 0.5)',  // Cyan
+            speedBoost: 'rgba(255, 255, 0, 0.5)',  // Yellow
+            doubleJump: 'rgba(0, 255, 0, 0.5)',  // Green
+            wallJump: 'rgba(255, 165, 0, 0.5)',  // Orange
+            timeSlow: 'rgba(128, 0, 128, 0.5)',  // Purple
+            floatMode: 'rgba(135, 206, 235, 0.5)',  // Sky Blue
+            heavyMode: 'rgba(139, 69, 19, 0.5)',  // Brown
+            reverseControls: 'rgba(255, 0, 0, 0.5)',  // Red
+            platformSize: 'rgba(255, 192, 203, 0.5)',  // Pink
+            noSpikes: 'rgba(255, 255, 255, 0.5)'  // White
+        };
+
+        // Secret shortcuts
+        const SECRET_COMBINATIONS = {
+            'ArrowUpArrowUpArrowDownArrowDownArrowLeftArrowRightArrowLeftArrowRight': () => {
+                // Konami code - Super jump
+                if (!game.secretCooldowns.superJump) {
+                    duck.speedY = JUMP_FORCE * 2;
+                    game.secretCooldowns.superJump = true;
+                    game.activeEffects.push('superJump');
+                    setTimeout(() => {
+                        game.secretCooldowns.superJump = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'superJump');
+                    }, 5000);
+                }
+            },
+            'ShiftShift': () => {
+                // Double Shift - Speed boost
+                if (!game.secretCooldowns.speedBoost) {
+                    duck.speedBoostEndTime = performance.now() + 30000;
+                    duck.isSpeedBoosted = true;
+                    game.secretCooldowns.speedBoost = true;
+                    game.activeEffects.push('speedBoost');
+                    setTimeout(() => {
+                        game.secretCooldowns.speedBoost = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'speedBoost');
+                    }, 10000);
+                }
+            },
+            'ArrowUpArrowDownArrowUpArrowDown': () => {
+                // Up Down Up Down - Double jump
+                if (!game.secretCooldowns.doubleJump) {
+                    game.secretCooldowns.doubleJump = true;
+                    const originalJumpForce = JUMP_FORCE;
+                    JUMP_FORCE *= 1.5;
+                    game.activeEffects.push('doubleJump');
+                    setTimeout(() => {
+                        JUMP_FORCE = originalJumpForce;
+                        game.secretCooldowns.doubleJump = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'doubleJump');
+                    }, 10000);
+                }
+            },
+            'ArrowLeftArrowRightArrowLeftArrowRight': () => {
+                // Left Right Left Right - Wall jump
+                if (!game.secretCooldowns.wallJump) {
+                    game.secretCooldowns.wallJump = true;
+                    const originalFriction = FRICTION;
+                    FRICTION = 0.95;
+                    game.activeEffects.push('wallJump');
+                    setTimeout(() => {
+                        FRICTION = originalFriction;
+                        game.secretCooldowns.wallJump = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'wallJump');
+                    }, 15000);
+                }
+            },
+            'SpaceSpaceSpace': () => {
+                // Triple Space - Time slow
+                if (!game.secretCooldowns.timeSlow) {
+                    game.secretCooldowns.timeSlow = true;
+                    const originalMoveSpeed = MOVE_SPEED;
+                    const originalHardMoveSpeed = HARD_MOVE_SPEED;
+                    const originalExtremeMoveSpeed = EXTREME_MOVE_SPEED;
+                    MOVE_SPEED *= 0.5;
+                    HARD_MOVE_SPEED *= 0.5;
+                    EXTREME_MOVE_SPEED *= 0.5;
+                    game.activeEffects.push('timeSlow');
+                    setTimeout(() => {
+                        MOVE_SPEED = originalMoveSpeed;
+                        HARD_MOVE_SPEED = originalHardMoveSpeed;
+                        EXTREME_MOVE_SPEED = originalExtremeMoveSpeed;
+                        game.secretCooldowns.timeSlow = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'timeSlow');
+                    }, 8000);
+                }
+            },
+            'ArrowUpArrowUpArrowUp': () => {
+                // Triple Up - Float mode
+                if (!game.secretCooldowns.floatMode) {
+                    game.secretCooldowns.floatMode = true;
+                    const originalGravity = GRAVITY;
+                    GRAVITY = 0.1;
+                    game.activeEffects.push('floatMode');
+                    setTimeout(() => {
+                        GRAVITY = originalGravity;
+                        game.secretCooldowns.floatMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'floatMode');
+                    }, 12000);
+                }
+            },
+            'ArrowDownArrowDownArrowDown': () => {
+                // Triple Down - Heavy mode
+                if (!game.secretCooldowns.heavyMode) {
+                    game.secretCooldowns.heavyMode = true;
+                    const originalGravity = GRAVITY;
+                    GRAVITY = 0.8;
+                    game.activeEffects.push('heavyMode');
+                    setTimeout(() => {
+                        GRAVITY = originalGravity;
+                        game.secretCooldowns.heavyMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'heavyMode');
+                    }, 12000);
+                }
+            },
+            'ArrowLeftArrowLeftArrowLeft': () => {
+                // Triple Left - Reverse controls
+                if (!game.secretCooldowns.reverseControls) {
+                    game.secretCooldowns.reverseControls = true;
+                    const originalRight = controls.right;
+                    const originalLeft = controls.left;
+                    controls.right = originalLeft;
+                    controls.left = originalRight;
+                    game.activeEffects.push('reverseControls');
+                    setTimeout(() => {
+                        controls.right = originalRight;
+                        controls.left = originalLeft;
+                        game.secretCooldowns.reverseControls = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'reverseControls');
+                    }, 15000);
+                }
+            },
+            'ArrowRightArrowRightArrowRight': () => {
+                // Triple Right - Platform size change
+                if (!game.secretCooldowns.platformSize) {
+                    game.secretCooldowns.platformSize = true;
+                    const originalPlatformWidth = PLATFORM_WIDTH;
+                    const originalHardPlatformWidth = HARD_PLATFORM_WIDTH;
+                    PLATFORM_WIDTH *= 1.5;
+                    HARD_PLATFORM_WIDTH *= 1.5;
+                    game.activeEffects.push('platformSize');
+                    setTimeout(() => {
+                        PLATFORM_WIDTH = originalPlatformWidth;
+                        HARD_PLATFORM_WIDTH = originalHardPlatformWidth;
+                        game.secretCooldowns.platformSize = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'platformSize');
+                    }, 20000);
+                }
+            },
+            'ShiftControl': () => {
+                // Shift+Control - No spikes
+                if (!game.secretCooldowns.noSpikes) {
+                    game.secretCooldowns.noSpikes = true;
+                    const originalSpikeChance = SPIKE_CHANCE;
+                    const originalHardSpikeChance = HARD_SPIKE_CHANCE;
+                    SPIKE_CHANCE = 0;
+                    HARD_SPIKE_CHANCE = 0;
+                    game.activeEffects.push('noSpikes');
+                    setTimeout(() => {
+                        SPIKE_CHANCE = originalSpikeChance;
+                        HARD_SPIKE_CHANCE = originalHardSpikeChance;
+                        game.secretCooldowns.noSpikes = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'noSpikes');
+                    }, 25000);
+                }
+            }
+        };
+
+        // Start game function
+        function startGame() {
+            titleScreen.style.display = 'none';
+            canvas.style.display = 'block';
+            document.getElementById('scoreBar').style.display = 'block';
+            game.running = true;
+            resetPlayer();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Add click event to start button
+        startButton.addEventListener('click', startGame);
+
+        // Add space/enter key to start game
+        document.addEventListener('keydown', (e) => {
+            if (!game.running && (e.key === ' ' || e.key === 'Enter')) {
+                startGame();
+            }
+        });
+
+        // Set canvas size
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // Initial setup
+        setCanvasSize();
+        window.addEventListener('resize', setCanvasSize);
+
+        // Game objects
+        const duck = {
+            x: 100,
+            y: 100,
+            width: 50,
+            height: 50,
+            speedX: 0,
+            speedY: 0,
+            onGround: false,
+            facingRight: true,
+            autoMove: true,
+            startX: 100,
+            startY: 100,
+            jumpQueued: false,
+            speedBoostEndTime: 0,
+            isSpeedBoosted: false
+        };
+
+        const camera = {
+            x: 0,
+            y: 0,
+            lerp: 0.1
+        };
+
+        const platforms = [];
+        const PLATFORM_SPACING = 200;  // Reduced from 250 to make jumps easier
+        const PLATFORM_WIDTH = 150;
+        const PLATFORM_HEIGHT = 30;
+        const PLATFORM_MIN_Y = 200;
+        const PLATFORM_MAX_Y = 500;
+        const MAX_JUMP_DISTANCE = 250;  // Reduced from 300 to ensure jumps are possible
+        const MIN_JUMP_DISTANCE = 50;   // Added minimum jump distance
+        const SPIKE_START_DISTANCE = 2000;
+        const SPIKE_CHANCE = 0.3;
+        const HARD_SPIKE_CHANCE = 0.5;
+        const SPIKE_WIDTH = 20;
+        const SPIKE_HEIGHT = 15;
+        const SPIKE_OFFSET = 65;
+        const HARD_MODE_START = 100000;  // 1000m
+        const HARD_PLATFORM_WIDTH = 120;
+        const HARD_MOVE_SPEED = 14;
+        const SPEED_BOOST_CHANCE = 0.15;
+        const HARD_SPEED_BOOST_CHANCE = 0.25;
+        const EXTREME_MODE_START = 10000000;  // 100000m
+        const EXTREME_SPEED_BOOST_CHANCE = 0.4;
+        const EXTREME_MOVE_SPEED = 18;
+        const EXTREME_PLATFORM_WIDTH = 100;
+        const ULTIMATE_MODE_START = 1000000000;  // 1 billion meters
+        const ULTIMATE_MOVE_SPEED = 35;  // Reduced from 50 to 35
+        const ULTIMATE_PLATFORM_WIDTH = 50;  // Increased from 30 to 50
+        const ULTIMATE_SPIKE_CHANCE = 0.6;  // Reduced from 0.8 to 0.6
+        const ULTIMATE_SPEED_BOOST_CHANCE = 0.4;  // Reduced from 0.6 to 0.4
+        const SPEED_BOOST_DURATION = 10000;
+        const SPEED_BOOST_MULTIPLIER = 2;
+        const SPEED_BOOST_JUMP_MULTIPLIER = 0.5;
+
+        // Game constants
+        const GRAVITY = 0.4;
+        const JUMP_FORCE = -10;
+        const MOVE_SPEED = 10;
+        const FRICTION = 0.85;
+
+        // Controls
+        const controls = {
+            right: false,
+            left: false,
+            jump: false
+        };
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowRight':
+                case 'd':
+                    controls.right = true;
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                    controls.left = true;
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                case ' ':
+                    controls.jump = true;
+                    break;
+                case 'Backspace':
+                case '1':
+                    resetPlayer();
+                    break;
+            }
+
+            // Add key to sequence for other combinations
+            game.secretKeys.push(e.key);
+            
+            // Keep only last 10 keys
+            if (game.secretKeys.length > 10) {
+                game.secretKeys.shift();
+            }
+            
+            // Check for other secret combinations
+            const currentSequence = game.secretKeys.join('');
+            for (const [combination, action] of Object.entries(SECRET_COMBINATIONS)) {
+                if (currentSequence.endsWith(combination)) {
+                    action();
+                    game.secretKeys = [];  // Reset sequence after successful combination
+                    break;
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowRight':
+                case 'd':
+                    controls.right = false;
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                    controls.left = false;
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                case ' ':
+                    controls.jump = false;
+                    break;
+            }
+        });
+
+        // Initialize platforms
+        function initPlatforms() {
+            try {
+                // Clear existing platforms
+                platforms.length = 0;
+
+                // Create initial platform under the duck
+                platforms.push({
+                    x: duck.startX - PLATFORM_WIDTH/2,
+                    y: duck.startY + 50,
+                    width: PLATFORM_WIDTH,
+                    height: PLATFORM_HEIGHT,
+                    type: 'normal',
+                    hasSpikes: false,
+                    spikeX: 0
+                });
+
+                // Generate initial set of platforms
+                generatePlatforms(5);
+            } catch (error) {
+                console.error('Error initializing platforms:', error);
+                resetPlayer();
+            }
+        }
+
+        // Generate new platforms
+        function generatePlatforms(count) {
+            try {
+                const lastPlatform = platforms[platforms.length - 1];
+                if (!lastPlatform) return;
+
+                let lastX = lastPlatform.x + PLATFORM_SPACING;
+                const maxPlatforms = 200;
+
+                for (let i = 0; i < count && platforms.length < maxPlatforms; i++) {
+                    // Calculate maximum allowed Y based on last platform and jump physics
+                    const maxY = lastPlatform.y + MAX_JUMP_DISTANCE;
+                    const minY = Math.max(
+                        lastPlatform.y - MAX_JUMP_DISTANCE,
+                        PLATFORM_MIN_Y
+                    );
+                    
+                    // Calculate a safe Y position that ensures the jump is possible
+                    const jumpHeight = Math.abs(JUMP_FORCE) * Math.abs(JUMP_FORCE) / (2 * GRAVITY);
+                    const maxSafeHeight = jumpHeight * 0.8; // 80% of max jump height for safety
+                    
+                    // Ensure Y stays within safe jump distance
+                    const y = Math.min(
+                        Math.max(
+                            Math.random() * (maxY - minY) + minY,
+                            lastPlatform.y - maxSafeHeight
+                        ),
+                        lastPlatform.y + maxSafeHeight
+                    );
+
+                    const isHardMode = lastX > HARD_MODE_START;
+                    const isExtremeMode = lastX > EXTREME_MODE_START;
+                    const isUltimateMode = lastX > ULTIMATE_MODE_START;
+                    
+                    // Determine platform type first
+                    let platformType = 'normal';
+                    if (isHardMode) {
+                        const speedBoostChance = isUltimateMode ? ULTIMATE_SPEED_BOOST_CHANCE :
+                                               (isExtremeMode ? EXTREME_SPEED_BOOST_CHANCE :
+                                               HARD_SPEED_BOOST_CHANCE);
+                        if (Math.random() < speedBoostChance) {
+                            platformType = 'speedboost';
+                        }
+                    }
+                    
+                    // Determine if platform has spikes
+                    let hasSpikes = false;
+                    if (isUltimateMode) {
+                        hasSpikes = platformType === 'normal' && Math.random() < ULTIMATE_SPIKE_CHANCE;
+                    } else if (isHardMode) {
+                        hasSpikes = platformType === 'normal';
+                    } else {
+                        hasSpikes = lastX > SPIKE_START_DISTANCE && Math.random() < SPIKE_CHANCE;
+                    }
+                    
+                    // Calculate platform width and spike position
+                    const platformWidth = isUltimateMode ? ULTIMATE_PLATFORM_WIDTH :
+                                        (isExtremeMode ? EXTREME_PLATFORM_WIDTH :
+                                        (isHardMode ? HARD_PLATFORM_WIDTH : PLATFORM_WIDTH));
+                    const spikeX = lastX + (isHardMode ? platformWidth/2 - SPIKE_WIDTH/2 : SPIKE_OFFSET);
+                    
+                    platforms.push({
+                        x: lastX,
+                        y: y,
+                        width: platformWidth,
+                        height: PLATFORM_HEIGHT,
+                        type: platformType,
+                        hasSpikes: hasSpikes,
+                        spikeX: spikeX,
+                        isExtremeMode: isExtremeMode,
+                        isUltimateMode: isUltimateMode
+                    });
+                    lastX += PLATFORM_SPACING;
+                }
+
+                // Clean up old platforms more aggressively
+                const cleanupThreshold = duck.x - canvas.width * 2;
+                platforms = platforms.filter(platform => platform.x > cleanupThreshold);
+            } catch (error) {
+                console.error('Error generating platforms:', error);
+            }
+        }
+
+        function resetPlayer() {
+            if (game.isResetting) return;
+            game.isResetting = true;
+
+            try {
+                // Reset duck position and state
+                duck.x = duck.startX;
+                duck.y = duck.startY;
+                duck.speedX = 0;
+                duck.speedY = 0;
+                duck.jumpQueued = false;
+                duck.speedBoostEndTime = 0;
+                duck.isSpeedBoosted = false;
+                duck.onGround = false;
+                duck.facingRight = true;
+                
+                // Reset camera
+                camera.x = 0;
+                
+                // Clear platforms
+                platforms.length = 0;
+                
+                // Create initial platform
+                platforms.push({
+                    x: duck.startX - PLATFORM_WIDTH/2,
+                    y: duck.startY + 50,
+                    width: PLATFORM_WIDTH,
+                    height: PLATFORM_HEIGHT,
+                    type: 'normal',
+                    hasSpikes: false,
+                    spikeX: 0
+                });
+
+                // Generate initial platforms
+                for (let i = 0; i < 5; i++) {
+                    const lastPlatform = platforms[platforms.length - 1];
+                    const lastX = lastPlatform.x + PLATFORM_SPACING;
+                    const y = Math.random() * (PLATFORM_MAX_Y - PLATFORM_MIN_Y) + PLATFORM_MIN_Y;
+                    const hasSpikes = lastX > SPIKE_START_DISTANCE && Math.random() < SPIKE_CHANCE;
+                    
+                    platforms.push({
+                        x: lastX,
+                        y: y,
+                        width: PLATFORM_WIDTH,
+                        height: PLATFORM_HEIGHT,
+                        type: 'normal',
+                        hasSpikes: hasSpikes,
+                        spikeX: lastX + SPIKE_OFFSET
+                    });
+                }
+
+                // Reset game state
+                game.lastFrameTime = performance.now();
+                game.frameCount = 0;
+            } catch (error) {
+                console.error('Error in resetPlayer:', error);
+                window.location.reload();
+            } finally {
+                game.isResetting = false;
+            }
+        }
+
+        // Add clouds
+        const clouds = [];
+        const CLOUD_COUNT = 10;
+        const CLOUD_SPEED = 0.2;
+
+        function initClouds() {
+            for (let i = 0; i < CLOUD_COUNT; i++) {
+                clouds.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * (canvas.height / 2),
+                    width: 60 + Math.random() * 40,
+                    height: 30 + Math.random() * 20
+                });
+            }
+        }
+
+        function updateClouds() {
+            for (const cloud of clouds) {
+                cloud.x -= CLOUD_SPEED;
+                if (cloud.x + cloud.width < 0) {
+                    cloud.x = canvas.width;
+                    cloud.y = Math.random() * (canvas.height / 2);
+                }
+            }
+        }
+
+        function drawCloud(x, y, width, height) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(x, y, width/3, 0, Math.PI * 2);
+            ctx.arc(x + width/3, y - height/4, width/4, 0, Math.PI * 2);
+            ctx.arc(x + width/2, y, width/3, 0, Math.PI * 2);
+            ctx.arc(x + width/3, y + height/4, width/4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function update() {
+            if (game.isResetting) return;
+
+            try {
+                const currentTime = performance.now();
+                const deltaTime = currentTime - game.lastFrameTime;
+                
+                // Check for severe lag
+                if (deltaTime > 100) {
+                    console.warn('Severe lag detected, resetting...');
+                    resetPlayer();
+                    return;
+                }
+
+                game.lastFrameTime = currentTime;
+                game.frameCount++;
+
+                // Update clouds
+                updateClouds();
+
+                // Update score
+                game.score = Math.floor(duck.x / 100);  // 1 point per 100 pixels
+                document.getElementById('scoreBar').textContent = `Distance: ${game.score}m`;
+
+                // Check if we're in hard mode, extreme mode, or ultimate mode
+                const isHardMode = duck.x > HARD_MODE_START;
+                const isExtremeMode = duck.x > EXTREME_MODE_START;
+                const isUltimateMode = duck.x > ULTIMATE_MODE_START;
+                let currentMoveSpeed = isUltimateMode ? ULTIMATE_MOVE_SPEED : 
+                                     (isExtremeMode ? EXTREME_MOVE_SPEED : 
+                                     (isHardMode ? HARD_MOVE_SPEED : MOVE_SPEED));
+
+                // Update speed boost state
+                if (currentTime > duck.speedBoostEndTime) {
+                    duck.isSpeedBoosted = false;
+                }
+
+                // Apply speed boost if active
+                if (duck.isSpeedBoosted) {
+                    currentMoveSpeed *= SPEED_BOOST_MULTIPLIER;
+                }
+
+                // Movement
+                if (duck.autoMove) {
+                    duck.speedX = currentMoveSpeed;
+                    duck.facingRight = true;
+                } else {
+                    if (controls.right) {
+                        duck.speedX = currentMoveSpeed;
+                        duck.facingRight = true;
+                    } else if (controls.left) {
+                        duck.speedX = -currentMoveSpeed;
+                        duck.facingRight = false;
+                    } else {
+                        duck.speedX *= FRICTION;
+                    }
+                }
+
+                // Jump handling
+                if (controls.jump) {
+                    duck.jumpQueued = true;
+                }
+
+                if (duck.jumpQueued && duck.onGround) {
+                    const jumpForce = duck.isSpeedBoosted ? JUMP_FORCE * SPEED_BOOST_JUMP_MULTIPLIER : JUMP_FORCE;
+                    duck.speedY = jumpForce;
+                    duck.onGround = false;
+                    duck.jumpQueued = false;
+                }
+
+                // Physics
+                duck.speedY += GRAVITY;
+                duck.x += duck.speedX;
+                duck.y += duck.speedY;
+
+                // Fall detection
+                if (duck.y > canvas.height + 100) {
+                    resetPlayer();
+                    return;
+                }
+
+                // Platform collision
+                duck.onGround = false;
+                for (const platform of platforms) {
+                    if (!platform) continue;
+
+                    // Check for spike collision first
+                    if (platform.hasSpikes) {
+                        if (duck.x + duck.width > platform.spikeX &&
+                            duck.x < platform.spikeX + SPIKE_WIDTH &&
+                            duck.y + duck.height > platform.y &&
+                            duck.y + duck.height < platform.y + platform.height + 10) {
+                            resetPlayer();
+                            return;
+                        }
+                    }
+
+                    // Regular platform collision
+                    if (duck.x < platform.x + platform.width &&
+                        duck.x + duck.width > platform.x &&
+                        duck.y + duck.height > platform.y &&
+                        duck.y < platform.y + platform.height) {
+                        duck.onGround = true;
+                        duck.y = platform.y - duck.height;
+                        duck.speedY = 0;
+
+                        // Activate speed boost if platform is speed boost type
+                        if (platform.type === 'speedboost' && !duck.isSpeedBoosted) {
+                            duck.speedBoostEndTime = currentTime + SPEED_BOOST_DURATION;
+                            duck.isSpeedBoosted = true;
+                        }
+                    }
+                }
+
+                // Generate new platforms more aggressively
+                const lastPlatform = platforms[platforms.length - 1];
+                if (lastPlatform && duck.x > lastPlatform.x - canvas.width) {
+                    generatePlatforms(5);
+                }
+
+                // Camera update with faster smoothing
+                const targetX = Math.max(0, duck.x - canvas.width / 3);
+                camera.x += (targetX - camera.x) * 0.15;
+
+            } catch (error) {
+                console.error('Error in update:', error);
+                resetPlayer();
+            }
+        }
+
+        function draw() {
+            if (game.isResetting) return;
+
+            try {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw clouds
+                for (const cloud of clouds) {
+                    drawCloud(cloud.x, cloud.y, cloud.width, cloud.height);
+                }
+
+                ctx.save();
+                ctx.translate(-camera.x, 0);
+
+                // Draw platforms
+                for (const platform of platforms) {
+                    if (!platform) continue;
+
+                    // Draw platform
+                    if (platform.type === 'speedboost') {
+                        ctx.fillStyle = '#000000';
+                    } else {
+                        ctx.fillStyle = '#8B4513';
+                    }
+                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+                    // Draw spikes if platform has them
+                    if (platform.hasSpikes) {
+                        ctx.fillStyle = '#FF0000';
+                        const spikeX = platform.spikeX;
+                        
+                        // Draw single spike
+                        ctx.beginPath();
+                        ctx.moveTo(spikeX, platform.y);
+                        ctx.lineTo(spikeX + SPIKE_WIDTH/2, platform.y - SPIKE_HEIGHT);
+                        ctx.lineTo(spikeX + SPIKE_WIDTH, platform.y);
+                        ctx.fill();
+                    }
+                }
+
+                // Draw duck body
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(duck.x, duck.y, duck.width, duck.height);
+
+                // Draw duck face
+                ctx.fillStyle = '#000000';
+                // Eye
+                const eyeX = duck.facingRight ? duck.x + duck.width - 15 : duck.x + 15;
+                ctx.beginPath();
+                ctx.arc(eyeX, duck.y + 15, 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Beak
+                ctx.fillStyle = '#FFA500';
+                const beakX = duck.facingRight ? duck.x + duck.width : duck.x;
+                ctx.beginPath();
+                ctx.moveTo(beakX, duck.y + 20);
+                ctx.lineTo(beakX + (duck.facingRight ? 10 : -10), duck.y + 25);
+                ctx.lineTo(beakX, duck.y + 30);
+                ctx.fill();
+
+                // Draw active effects
+                for (const effect of game.activeEffects) {
+                    ctx.fillStyle = EFFECT_COLORS[effect];
+                    ctx.fillRect(duck.x - 5, duck.y - 5, duck.width + 10, duck.height + 10);
+                }
+
+                ctx.restore();
+            } catch (error) {
+                console.error('Error in draw:', error);
+            }
+        }
+
+        let lastFrameRequest = 0;
+        function gameLoop(timestamp) {
+            if (!game.running) return;
+
+            try {
+                // Prevent multiple frame requests
+                if (timestamp - lastFrameRequest < 16) { // Cap at ~60 FPS
+                    requestAnimationFrame(gameLoop);
+                    return;
+                }
+                lastFrameRequest = timestamp;
+
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            } catch (error) {
+                console.error('Error in gameLoop:', error);
+                game.running = false;
+                resetPlayer();
+                game.running = true;
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Initialize game
+        window.addEventListener('load', () => {
+            try {
+                game.lastFrameTime = performance.now();
+                initClouds();
+                resetPlayer();
+                requestAnimationFrame(gameLoop);
+            } catch (error) {
+                console.error('Error starting game:', error);
+                window.location.reload();
+            }
+        });
+    </script>
+</body>
+</html>
