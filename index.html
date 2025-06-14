@@ -24,6 +24,7 @@
             display: none;  /* Hide canvas initially */
             width: 100%;
             height: 100%;
+            touch-action: none;  /* Prevent default touch actions */
         }
         #scoreBar {
             position: fixed;
@@ -80,6 +81,54 @@
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-20px); }
         }
+        #mobileControls {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 1000;
+        }
+        #jumpButton {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 215, 0, 0.7);
+            border: 3px solid #FFD700;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #000;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #jumpButton:active {
+            background: rgba(255, 215, 0, 0.9);
+            transform: scale(0.95);
+        }
+        #moveArea {
+            width: 60%;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 40px;
+            position: relative;
+        }
+        #moveKnob {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 215, 0, 0.7);
+            border: 3px solid #FFD700;
+            border-radius: 50%;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            user-select: none;
+            -webkit-user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -87,11 +136,21 @@
         <h1 id="gameTitle">Duck Game</h1>
         <div id="instructions">
             Press SPACE or W to jump<br>
-            Hold SPACE for consecutive jumps
+            Hold SPACE for consecutive jumps<br>
+            <span id="mobileInstructions" style="display: none;">
+                Use the joystick to move<br>
+                Tap the yellow button to jump
+            </span>
         </div>
         <button id="startButton">Start Game</button>
     </div>
     <div id="scoreBar">Distance: 0m</div>
+    <div id="mobileControls">
+        <div id="moveArea">
+            <div id="moveKnob"></div>
+        </div>
+        <div id="jumpButton">JUMP</div>
+    </div>
     <canvas id="gameCanvas"></canvas>
     <script>
         // Initialize canvas
@@ -282,11 +341,86 @@
             }
         };
 
+        // Mobile controls
+        const mobileControls = document.getElementById('mobileControls');
+        const moveArea = document.getElementById('moveArea');
+        const moveKnob = document.getElementById('moveKnob');
+        const jumpButton = document.getElementById('jumpButton');
+        const mobileInstructions = document.getElementById('mobileInstructions');
+        let isMobile = false;
+
+        // Check if device is mobile
+        function checkMobile() {
+            isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+                mobileInstructions.style.display = 'block';
+                mobileControls.style.display = 'flex';
+            }
+        }
+
+        // Mobile touch controls
+        let moveKnobActive = false;
+        let moveKnobStartX = 0;
+        let moveKnobStartY = 0;
+        let moveKnobCurrentX = 0;
+
+        moveKnob.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            moveKnobActive = true;
+            const touch = e.touches[0];
+            moveKnobStartX = touch.clientX;
+            moveKnobStartY = touch.clientY;
+            moveKnobCurrentX = moveKnob.offsetLeft;
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!moveKnobActive) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - moveKnobStartX;
+            const newX = Math.max(0, Math.min(moveArea.offsetWidth - moveKnob.offsetWidth, moveKnobCurrentX + deltaX));
+            moveKnob.style.left = newX + 'px';
+            
+            // Update controls based on knob position
+            const center = moveArea.offsetWidth / 2;
+            const moveAmount = (newX - center) / center;
+            controls.left = moveAmount < -0.2;
+            controls.right = moveAmount > 0.2;
+        });
+
+        document.addEventListener('touchend', () => {
+            moveKnobActive = false;
+            moveKnob.style.left = '50%';
+            moveKnob.style.transform = 'translateX(-50%)';
+            controls.left = false;
+            controls.right = false;
+        });
+
+        jumpButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            controls.jump = true;
+        });
+
+        jumpButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            controls.jump = false;
+        });
+
+        // Prevent default touch behaviors
+        document.addEventListener('touchmove', (e) => {
+            if (e.target === canvas || e.target === moveArea || e.target === moveKnob || e.target === jumpButton) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
         // Start game function
         function startGame() {
             titleScreen.style.display = 'none';
             canvas.style.display = 'block';
             document.getElementById('scoreBar').style.display = 'block';
+            if (isMobile) {
+                mobileControls.style.display = 'flex';
+            }
             game.running = true;
             resetPlayer();
             requestAnimationFrame(gameLoop);
@@ -876,6 +1010,7 @@
         // Initialize game
         window.addEventListener('load', () => {
             try {
+                checkMobile();
                 game.lastFrameTime = performance.now();
                 initClouds();
                 resetPlayer();
