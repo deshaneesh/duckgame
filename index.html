@@ -129,6 +129,140 @@
             user-select: none;
             -webkit-user-select: none;
         }
+        #deathScreen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            z-index: 1000;
+        }
+        #deathTitle {
+            font-size: 72px;
+            margin-bottom: 20px;
+            color: #ff0000;
+            text-shadow: 3px 3px 0 #000;
+        }
+        #deathScore {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #highScore {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: #ffd700;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #restartButton {
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #ff0000;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        #restartButton:hover {
+            transform: scale(1.1);
+        }
+        #healthBar {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            z-index: 1000;
+            display: none;
+        }
+        #healthFill {
+            width: 100%;
+            height: 100%;
+            background: #00ff00;
+            border-radius: 10px;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        #healthText {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 14px;
+            text-shadow: 1px 1px 0 #000;
+            line-height: 20px;
+        }
+        #healthRegenIndicator {
+            position: absolute;
+            right: -25px;
+            top: 0;
+            color: #00ff00;
+            font-size: 16px;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        /* Mobile and iPad specific styles */
+        @media (max-width: 1024px) {
+            #jumpButton {
+                width: 120px;
+                height: 120px;
+                font-size: 32px;
+                border-width: 4px;
+            }
+            #moveArea {
+                width: 70%;
+                height: 100px;
+            }
+            #moveKnob {
+                width: 80px;
+                height: 80px;
+            }
+        }
+        /* iPhone specific styles */
+        @media (max-width: 428px) {
+            #jumpButton {
+                width: 100px;
+                height: 100px;
+                font-size: 28px;
+            }
+            #moveArea {
+                width: 65%;
+                height: 90px;
+            }
+            #moveKnob {
+                width: 70px;
+                height: 70px;
+            }
+        }
+        /* iPad specific styles */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            #jumpButton {
+                width: 150px;
+                height: 150px;
+                font-size: 36px;
+                border-width: 5px;
+            }
+            #moveArea {
+                width: 75%;
+                height: 120px;
+            }
+            #moveKnob {
+                width: 100px;
+                height: 100px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -144,7 +278,18 @@
         </div>
         <button id="startButton">Start Game</button>
     </div>
+    <div id="deathScreen">
+        <h1 id="deathTitle">Game Over!</h1>
+        <div id="deathScore">Distance: 0m</div>
+        <div id="highScore">High Score: 0m</div>
+        <button id="restartButton">Play Again</button>
+    </div>
     <div id="scoreBar">Distance: 0m</div>
+    <div id="healthBar">
+        <div id="healthFill"></div>
+        <div id="healthText">100 HP</div>
+        <div id="healthRegenIndicator">+</div>
+    </div>
     <div id="mobileControls">
         <div id="moveArea">
             <div id="moveKnob"></div>
@@ -163,12 +308,23 @@
         const game = {
             running: false,
             score: 0,
+            highScore: localStorage.getItem('highScore') || 0,
             lastFrameTime: 0,
             frameCount: 0,
             isResetting: false,
-            secretKeys: [],  // Track secret key combinations
-            secretCooldowns: {},  // Track cooldowns for secret abilities
-            activeEffects: []  // Track active visual effects
+            secretKeys: [],
+            secretCooldowns: {},
+            activeEffects: [],
+            health: 100,
+            maxHealth: 100,
+            invulnerable: false,
+            invulnerabilityTime: 0,
+            lastRegenTime: 0,
+            regenInterval: 2000, // 2 seconds between regen ticks
+            regenAmount: 1, // 1 HP per tick
+            healthPotions: [],
+            lastDamageTime: 0,
+            damageCooldown: 10000 // 10 seconds cooldown before regen starts
         };
 
         // Visual effects for shortcuts
@@ -418,10 +574,13 @@
             titleScreen.style.display = 'none';
             canvas.style.display = 'block';
             document.getElementById('scoreBar').style.display = 'block';
+            document.getElementById('healthBar').style.display = 'block';
             if (isMobile) {
                 mobileControls.style.display = 'flex';
             }
             game.running = true;
+            game.health = game.maxHealth;
+            updateHealthBar();
             resetPlayer();
             requestAnimationFrame(gameLoop);
         }
@@ -513,6 +672,47 @@
             right: false,
             left: false,
             jump: false
+        };
+
+        // Spike types with damage values
+        const SPIKE_TYPES = {
+            normal: {
+                color: '#FF0000',
+                width: 20,
+                height: 15,
+                damage: 10,
+                effect: null
+            },
+            fire: {
+                color: '#FF4500',
+                width: 25,
+                height: 20,
+                damage: 20,
+                effect: 'burn'
+            },
+            ice: {
+                color: '#00FFFF',
+                width: 18,
+                height: 18,
+                damage: 15,
+                effect: 'freeze'
+            },
+            poison: {
+                color: '#32CD32',
+                width: 22,
+                height: 16,
+                damage: 5,
+                effect: 'poison'
+            }
+        };
+
+        // Health potion properties
+        const HEALTH_POTION = {
+            width: 20,
+            height: 30,
+            healAmount: 25,
+            spawnChance: 0.1, // 10% chance per platform
+            color: '#ff00ff'
         };
 
         // Event listeners
@@ -660,6 +860,67 @@
                                         (isHardMode ? HARD_PLATFORM_WIDTH : PLATFORM_WIDTH));
                     const spikeX = lastX + (isHardMode ? platformWidth/2 - SPIKE_WIDTH/2 : SPIKE_OFFSET);
                     
+                    // Determine spike type
+                    let spikeType = 'normal';
+                    if (isUltimateMode) {
+                        // Ultimate mode: fire 75%, toxic 10%, ice 15%, normal 0%
+                        const rand = Math.random();
+                        if (rand < 0.75) {
+                            spikeType = 'fire';
+                        } else if (rand < 0.85) {
+                            spikeType = 'poison';
+                        } else {
+                            spikeType = 'ice';
+                        }
+                    } else if (isExtremeMode) {
+                        // Extreme mode: normal 5%, fire 50%, ice 25%, toxic 20%
+                        const rand = Math.random();
+                        if (rand < 0.05) {
+                            spikeType = 'normal';
+                        } else if (rand < 0.55) {
+                            spikeType = 'fire';
+                        } else if (rand < 0.80) {
+                            spikeType = 'ice';
+                        } else {
+                            spikeType = 'poison';
+                        }
+                    } else if (isHardMode) {
+                        // Hard mode: normal 35%, fire 15%, toxic 25%, ice 25%
+                        const rand = Math.random();
+                        if (rand < 0.35) {
+                            spikeType = 'normal';
+                        } else if (rand < 0.50) {
+                            spikeType = 'fire';
+                        } else if (rand < 0.75) {
+                            spikeType = 'poison';
+                        } else {
+                            spikeType = 'ice';
+                        }
+                    } else {
+                        // Normal mode: normal 50%, fire 5%, toxic 35%, ice 10%
+                        const rand = Math.random();
+                        if (rand < 0.50) {
+                            spikeType = 'normal';
+                        } else if (rand < 0.55) {
+                            spikeType = 'fire';
+                        } else if (rand < 0.90) {
+                            spikeType = 'poison';
+                        } else {
+                            spikeType = 'ice';
+                        }
+                    }
+                    
+                    // Add health potion with chance
+                    if (Math.random() < HEALTH_POTION.spawnChance) {
+                        game.healthPotions.push({
+                            x: lastX + platformWidth/2 - HEALTH_POTION.width/2,
+                            y: platform.y - HEALTH_POTION.height,
+                            width: HEALTH_POTION.width,
+                            height: HEALTH_POTION.height,
+                            collected: false
+                        });
+                    }
+
                     platforms.push({
                         x: lastX,
                         y: y,
@@ -667,6 +928,7 @@
                         height: PLATFORM_HEIGHT,
                         type: platformType,
                         hasSpikes: hasSpikes,
+                        spikeType: spikeType,
                         spikeX: spikeX,
                         isExtremeMode: isExtremeMode,
                         isUltimateMode: isUltimateMode
@@ -674,9 +936,12 @@
                     lastX += PLATFORM_SPACING;
                 }
 
-                // Clean up old platforms more aggressively
+                // Clean up old platforms and potions
                 const cleanupThreshold = duck.x - canvas.width * 2;
                 platforms = platforms.filter(platform => platform.x > cleanupThreshold);
+                game.healthPotions = game.healthPotions.filter(potion => 
+                    potion.x > cleanupThreshold && !potion.collected
+                );
             } catch (error) {
                 console.error('Error generating platforms:', error);
             }
@@ -736,6 +1001,14 @@
                 // Reset game state
                 game.lastFrameTime = performance.now();
                 game.frameCount = 0;
+                game.health = game.maxHealth;
+                game.healthPotions = [];
+                updateHealthBar();
+
+                // Show death screen if game was running
+                if (game.running) {
+                    handleDeath();
+                }
             } catch (error) {
                 console.error('Error in resetPlayer:', error);
                 window.location.reload();
@@ -778,6 +1051,93 @@
             ctx.arc(x + width/2, y, width/3, 0, Math.PI * 2);
             ctx.arc(x + width/3, y + height/4, width/4, 0, Math.PI * 2);
             ctx.fill();
+        }
+
+        // Update health bar
+        function updateHealthBar() {
+            const healthBar = document.getElementById('healthBar');
+            const healthFill = document.getElementById('healthFill');
+            const healthText = document.getElementById('healthText');
+            const healthRegenIndicator = document.getElementById('healthRegenIndicator');
+            
+            const healthPercent = (game.health / game.maxHealth) * 100;
+            healthFill.style.width = `${healthPercent}%`;
+            healthText.textContent = `${Math.ceil(game.health)} HP`;
+
+            // Change color based on health
+            if (healthPercent > 60) {
+                healthFill.style.backgroundColor = '#00ff00';
+            } else if (healthPercent > 30) {
+                healthFill.style.backgroundColor = '#ffff00';
+            } else {
+                healthFill.style.backgroundColor = '#ff0000';
+            }
+
+            // Show/hide regen indicator only if not in damage cooldown
+            const currentTime = performance.now();
+            const canRegen = currentTime - game.lastDamageTime >= game.damageCooldown;
+            healthRegenIndicator.style.display = (game.health < game.maxHealth && canRegen) ? 'block' : 'none';
+        }
+
+        // Heal function
+        function heal(amount) {
+            game.health = Math.min(game.maxHealth, game.health + amount);
+            updateHealthBar();
+        }
+
+        // Take damage function
+        function takeDamage(amount, effect = null) {
+            if (game.invulnerable) return;
+            
+            game.health = Math.max(0, game.health - amount);
+            game.lastDamageTime = performance.now(); // Update last damage time
+            updateHealthBar();
+
+            // Apply effects
+            if (effect) {
+                switch(effect) {
+                    case 'burn':
+                        // Take additional damage over time
+                        let burnDamage = amount * 0.2;
+                        for (let i = 0; i < 5; i++) {
+                            setTimeout(() => {
+                                game.health = Math.max(0, game.health - burnDamage);
+                                game.lastDamageTime = performance.now(); // Update on each burn tick
+                                updateHealthBar();
+                            }, i * 1000);
+                        }
+                        break;
+                    case 'freeze':
+                        // Slow down movement temporarily
+                        const originalMoveSpeed = MOVE_SPEED;
+                        MOVE_SPEED *= 0.5;
+                        setTimeout(() => {
+                            MOVE_SPEED = originalMoveSpeed;
+                        }, 3000);
+                        break;
+                    case 'poison':
+                        // Take small damage over time
+                        let poisonDamage = amount * 0.1;
+                        for (let i = 0; i < 10; i++) {
+                            setTimeout(() => {
+                                game.health = Math.max(0, game.health - poisonDamage);
+                                game.lastDamageTime = performance.now(); // Update on each poison tick
+                                updateHealthBar();
+                            }, i * 1000);
+                        }
+                        break;
+                }
+            }
+
+            // Check for death
+            if (game.health <= 0) {
+                handleDeath();
+                return;
+            }
+
+            // Temporary invulnerability
+            game.invulnerable = true;
+            game.invulnerabilityTime = performance.now() + 1000; // 1 second invulnerability
         }
 
         function update() {
@@ -861,19 +1221,23 @@
                     return;
                 }
 
+                // Check invulnerability
+                if (game.invulnerable && performance.now() > game.invulnerabilityTime) {
+                    game.invulnerable = false;
+                }
+
                 // Platform collision
                 duck.onGround = false;
                 for (const platform of platforms) {
                     if (!platform) continue;
 
-                    // Check for spike collision first
+                    // Check for spike collision
                     if (platform.hasSpikes) {
                         if (duck.x + duck.width > platform.spikeX &&
-                            duck.x < platform.spikeX + SPIKE_WIDTH &&
+                            duck.x < platform.spikeX + SPIKE_TYPES[platform.spikeType].width &&
                             duck.y + duck.height > platform.y &&
                             duck.y + duck.height < platform.y + platform.height + 10) {
-                            resetPlayer();
-                            return;
+                            takeDamage(SPIKE_TYPES[platform.spikeType].damage, SPIKE_TYPES[platform.spikeType].effect);
                         }
                     }
 
@@ -903,6 +1267,28 @@
                 // Camera update with faster smoothing
                 const targetX = Math.max(0, duck.x - canvas.width / 3);
                 camera.x += (targetX - camera.x) * 0.15;
+
+                // Health regeneration with damage cooldown check
+                if (currentTime - game.lastRegenTime >= game.regenInterval) {
+                    // Only regenerate if enough time has passed since last damage
+                    if (game.health < game.maxHealth && 
+                        currentTime - game.lastDamageTime >= game.damageCooldown) {
+                        heal(game.regenAmount);
+                    }
+                    game.lastRegenTime = currentTime;
+                }
+
+                // Check for potion collection
+                for (const potion of game.healthPotions) {
+                    if (!potion.collected &&
+                        duck.x < potion.x + potion.width &&
+                        duck.x + duck.width > potion.x &&
+                        duck.y < potion.y + potion.height &&
+                        duck.y + duck.height > potion.y) {
+                        potion.collected = true;
+                        heal(HEALTH_POTION.healAmount);
+                    }
+                }
 
             } catch (error) {
                 console.error('Error in update:', error);
@@ -938,15 +1324,49 @@
 
                     // Draw spikes if platform has them
                     if (platform.hasSpikes) {
-                        ctx.fillStyle = '#FF0000';
+                        const spikeType = SPIKE_TYPES[platform.spikeType];
+                        ctx.fillStyle = spikeType.color;
                         const spikeX = platform.spikeX;
                         
-                        // Draw single spike
-                        ctx.beginPath();
-                        ctx.moveTo(spikeX, platform.y);
-                        ctx.lineTo(spikeX + SPIKE_WIDTH/2, platform.y - SPIKE_HEIGHT);
-                        ctx.lineTo(spikeX + SPIKE_WIDTH, platform.y);
-                        ctx.fill();
+                        // Draw spike based on type
+                        switch(platform.spikeType) {
+                            case 'fire':
+                                // Draw flame-like spike
+                                ctx.beginPath();
+                                ctx.moveTo(spikeX, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height);
+                                ctx.lineTo(spikeX + spikeType.width, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height/2);
+                                ctx.fill();
+                                break;
+                            case 'ice':
+                                // Draw crystal-like spike
+                                ctx.beginPath();
+                                ctx.moveTo(spikeX, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height);
+                                ctx.lineTo(spikeX + spikeType.width, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height/3);
+                                ctx.lineTo(spikeX, platform.y);
+                                ctx.fill();
+                                break;
+                            case 'poison':
+                                // Draw dripping spike
+                                ctx.beginPath();
+                                ctx.moveTo(spikeX, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height);
+                                ctx.lineTo(spikeX + spikeType.width, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height/4);
+                                ctx.lineTo(spikeX, platform.y);
+                                ctx.fill();
+                                break;
+                            default:
+                                // Draw normal spike
+                                ctx.beginPath();
+                                ctx.moveTo(spikeX, platform.y);
+                                ctx.lineTo(spikeX + spikeType.width/2, platform.y - spikeType.height);
+                                ctx.lineTo(spikeX + spikeType.width, platform.y);
+                                ctx.fill();
+                        }
                     }
                 }
 
@@ -975,6 +1395,23 @@
                 for (const effect of game.activeEffects) {
                     ctx.fillStyle = EFFECT_COLORS[effect];
                     ctx.fillRect(duck.x - 5, duck.y - 5, duck.width + 10, duck.height + 10);
+                }
+
+                // Draw health potions
+                for (const potion of game.healthPotions) {
+                    if (!potion.collected) {
+                        // Draw potion bottle
+                        ctx.fillStyle = HEALTH_POTION.color;
+                        ctx.fillRect(potion.x, potion.y, potion.width, potion.height);
+                        
+                        // Draw potion cap
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(potion.x - 2, potion.y, potion.width + 4, 5);
+                        
+                        // Draw potion liquid
+                        ctx.fillStyle = '#ff00ff';
+                        ctx.fillRect(potion.x + 2, potion.y + 5, potion.width - 4, potion.height - 5);
+                    }
                 }
 
                 ctx.restore();
@@ -1019,6 +1456,27 @@
                 console.error('Error starting game:', error);
                 window.location.reload();
             }
+        });
+
+        // Update death handling
+        function handleDeath() {
+            game.running = false;
+            if (game.score > game.highScore) {
+                game.highScore = game.score;
+                localStorage.setItem('highScore', game.highScore);
+            }
+            
+            document.getElementById('deathScore').textContent = `Distance: ${game.score}m`;
+            document.getElementById('highScore').textContent = `High Score: ${game.highScore}m`;
+            document.getElementById('deathScreen').style.display = 'flex';
+        }
+
+        // Add restart button handler
+        document.getElementById('restartButton').addEventListener('click', () => {
+            document.getElementById('deathScreen').style.display = 'none';
+            resetPlayer();
+            game.running = true;
+            requestAnimationFrame(gameLoop);
         });
     </script>
 </body>
