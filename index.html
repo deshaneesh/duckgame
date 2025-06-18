@@ -87,13 +87,22 @@
             left: 0;
             right: 0;
             display: none;
-            justify-content: space-between;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
             padding: 0 20px;
             z-index: 1000;
         }
-        #jumpButton {
-            width: 80px;
+        #moveArea {
+            width: 40%;
             height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 40px;
+            position: relative;
+        }
+        #jumpButton {
+            width: 120px;
+            height: 120px;
             background: rgba(255, 215, 0, 0.7);
             border: 3px solid #FFD700;
             border-radius: 50%;
@@ -104,30 +113,14 @@
             color: #000;
             user-select: none;
             -webkit-user-select: none;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.1s;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            margin: 0 auto;
         }
         #jumpButton:active {
             background: rgba(255, 215, 0, 0.9);
             transform: scale(0.95);
-        }
-        #moveArea {
-            width: 60%;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 40px;
-            position: relative;
-        }
-        #moveKnob {
-            width: 60px;
-            height: 60px;
-            background: rgba(255, 215, 0, 0.7);
-            border: 3px solid #FFD700;
-            border-radius: 50%;
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            user-select: none;
-            -webkit-user-select: none;
         }
         #deathScreen {
             position: absolute;
@@ -215,52 +208,49 @@
         }
         /* Mobile and iPad specific styles */
         @media (max-width: 1024px) {
-            #jumpButton {
-                width: 120px;
-                height: 120px;
-                font-size: 32px;
-                border-width: 4px;
+            #mobileControls {
+                gap: 30px;
             }
             #moveArea {
-                width: 70%;
+                width: 45%;
                 height: 100px;
             }
-            #moveKnob {
-                width: 80px;
-                height: 80px;
-            }
-        }
-        /* iPhone specific styles */
-        @media (max-width: 428px) {
-            #jumpButton {
-                width: 100px;
-                height: 100px;
-                font-size: 28px;
-            }
-            #moveArea {
-                width: 65%;
-                height: 90px;
-            }
-            #moveKnob {
-                width: 70px;
-                height: 70px;
-            }
-        }
-        /* iPad specific styles */
-        @media (min-width: 768px) and (max-width: 1024px) {
             #jumpButton {
                 width: 150px;
                 height: 150px;
                 font-size: 36px;
-                border-width: 5px;
+                border-width: 4px;
+            }
+        }
+        /* iPhone specific styles */
+        @media (max-width: 428px) {
+            #mobileControls {
+                gap: 20px;
             }
             #moveArea {
-                width: 75%;
+                width: 40%;
+                height: 90px;
+            }
+            #jumpButton {
+                width: 130px;
+                height: 130px;
+                font-size: 32px;
+            }
+        }
+        /* iPad specific styles */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            #mobileControls {
+                gap: 40px;
+            }
+            #moveArea {
+                width: 50%;
                 height: 120px;
             }
-            #moveKnob {
-                width: 100px;
-                height: 100px;
+            #jumpButton {
+                width: 180px;
+                height: 180px;
+                font-size: 42px;
+                border-width: 5px;
             }
         }
     </style>
