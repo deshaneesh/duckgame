@@ -324,7 +324,9 @@
             regenAmount: 1, // 1 HP per tick
             healthPotions: [],
             lastDamageTime: 0,
-            damageCooldown: 10000 // 10 seconds cooldown before regen starts
+            damageCooldown: 10000, // 10 seconds cooldown before regen starts
+            scoreMultiplier: 1,
+            isGameOver: false
         };
 
         // Visual effects for shortcuts
@@ -338,7 +340,18 @@
             heavyMode: 'rgba(139, 69, 19, 0.5)',  // Brown
             reverseControls: 'rgba(255, 0, 0, 0.5)',  // Red
             platformSize: 'rgba(255, 192, 203, 0.5)',  // Pink
-            noSpikes: 'rgba(255, 255, 255, 0.5)'  // White
+            noSpikes: 'rgba(255, 255, 255, 0.5)',  // White
+            // New effect colors
+            rainbowMode: 'rgba(255, 0, 255, 0.5)',  // Magenta
+            ghostMode: 'rgba(200, 200, 200, 0.5)',  // Gray
+            tinyMode: 'rgba(0, 0, 255, 0.5)',  // Blue
+            giantMode: 'rgba(255, 0, 0, 0.5)',  // Red
+            bouncyMode: 'rgba(255, 165, 0, 0.5)',  // Orange
+            stickyMode: 'rgba(128, 0, 128, 0.5)',  // Purple
+            magnetMode: 'rgba(255, 215, 0, 0.5)',  // Gold
+            shieldMode: 'rgba(0, 255, 255, 0.5)',  // Cyan
+            doublePoints: 'rgba(255, 255, 0, 0.5)',  // Yellow
+            timeWarp: 'rgba(255, 0, 255, 0.5)'  // Magenta
         };
 
         // Secret shortcuts
@@ -497,6 +510,253 @@
             }
         };
 
+        // Add mountains and sun
+        const mountains = [];
+        const MOUNTAIN_COUNT = 5;
+        const SUN = {
+            x: 0,
+            y: 0,
+            radius: 60,
+            color: '#FFD700'
+        };
+
+        function initMountains() {
+            for (let i = 0; i < MOUNTAIN_COUNT; i++) {
+                mountains.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: canvas.height - 100,
+                    width: 200 + Math.random() * 300,
+                    height: 150 + Math.random() * 200,
+                    color: `rgba(139, 69, 19, ${0.3 + Math.random() * 0.4})`
+                });
+            }
+        }
+
+        function drawMountains() {
+            for (const mountain of mountains) {
+                ctx.fillStyle = mountain.color;
+                ctx.beginPath();
+                ctx.moveTo(mountain.x, mountain.y);
+                ctx.lineTo(mountain.x + mountain.width/2, mountain.y - mountain.height);
+                ctx.lineTo(mountain.x + mountain.width, mountain.y);
+                ctx.fill();
+            }
+        }
+
+        function drawSun() {
+            ctx.fillStyle = SUN.color;
+            ctx.beginPath();
+            ctx.arc(SUN.x, SUN.y, SUN.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Add sun rays
+            ctx.strokeStyle = SUN.color;
+            ctx.lineWidth = 3;
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI) / 4;
+                ctx.beginPath();
+                ctx.moveTo(
+                    SUN.x + Math.cos(angle) * SUN.radius,
+                    SUN.y + Math.sin(angle) * SUN.radius
+                );
+                ctx.lineTo(
+                    SUN.x + Math.cos(angle) * (SUN.radius + 20),
+                    SUN.y + Math.sin(angle) * (SUN.radius + 20)
+                );
+                ctx.stroke();
+            }
+        }
+
+        // Update ground and mountain constants
+        const GROUND = {
+            y: canvas.height - 100, // Aligned with mountains
+            height: 100,
+            color: '#8B4513'
+        };
+
+        function drawGround() {
+            ctx.fillStyle = GROUND.color;
+            ctx.fillRect(0, GROUND.y, canvas.width, GROUND.height);
+            
+            // Add grass on top
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, GROUND.y, canvas.width, 10);
+            
+            // Add some texture
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < canvas.width; i += 30) {
+                ctx.beginPath();
+                ctx.moveTo(i, GROUND.y);
+                ctx.lineTo(i, GROUND.y + GROUND.height);
+                ctx.stroke();
+            }
+        }
+
+        // Add new shortcuts
+        const NEW_SECRET_COMBINATIONS = {
+            'ArrowUpArrowDownArrowLeftArrowRight': () => {
+                // Rainbow mode
+                if (!game.secretCooldowns.rainbowMode) {
+                    game.secretCooldowns.rainbowMode = true;
+                    game.activeEffects.push('rainbowMode');
+                    const originalColors = {
+                        duck: '#FFD700',
+                        beak: '#FFA500'
+                    };
+                    let hue = 0;
+                    const rainbowInterval = setInterval(() => {
+                        hue = (hue + 1) % 360;
+                        duck.color = `hsl(${hue}, 100%, 50%)`;
+                    }, 50);
+                    setTimeout(() => {
+                        clearInterval(rainbowInterval);
+                        duck.color = originalColors.duck;
+                        game.secretCooldowns.rainbowMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'rainbowMode');
+                    }, 15000);
+                }
+            },
+            'ArrowDownArrowUpArrowRightArrowLeft': () => {
+                // Ghost mode
+                if (!game.secretCooldowns.ghostMode) {
+                    game.secretCooldowns.ghostMode = true;
+                    game.activeEffects.push('ghostMode');
+                    duck.ghostMode = true;
+                    setTimeout(() => {
+                        duck.ghostMode = false;
+                        game.secretCooldowns.ghostMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'ghostMode');
+                    }, 10000);
+                }
+            },
+            'ArrowLeftArrowRightArrowUpArrowDown': () => {
+                // Tiny mode
+                if (!game.secretCooldowns.tinyMode) {
+                    game.secretCooldowns.tinyMode = true;
+                    game.activeEffects.push('tinyMode');
+                    const originalSize = { width: duck.width, height: duck.height };
+                    duck.width = originalSize.width * 0.5;
+                    duck.height = originalSize.height * 0.5;
+                    setTimeout(() => {
+                        duck.width = originalSize.width;
+                        duck.height = originalSize.height;
+                        game.secretCooldowns.tinyMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'tinyMode');
+                    }, 12000);
+                }
+            },
+            'ArrowRightArrowLeftArrowDownArrowUp': () => {
+                // Giant mode
+                if (!game.secretCooldowns.giantMode) {
+                    game.secretCooldowns.giantMode = true;
+                    game.activeEffects.push('giantMode');
+                    const originalSize = { width: duck.width, height: duck.height };
+                    duck.width = originalSize.width * 2;
+                    duck.height = originalSize.height * 2;
+                    setTimeout(() => {
+                        duck.width = originalSize.width;
+                        duck.height = originalSize.height;
+                        game.secretCooldowns.giantMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'giantMode');
+                    }, 12000);
+                }
+            },
+            'SpaceSpaceArrowUpArrowUp': () => {
+                // Bouncy mode
+                if (!game.secretCooldowns.bouncyMode) {
+                    game.secretCooldowns.bouncyMode = true;
+                    game.activeEffects.push('bouncyMode');
+                    const originalJumpForce = JUMP_FORCE;
+                    JUMP_FORCE *= 1.5;
+                    setTimeout(() => {
+                        JUMP_FORCE = originalJumpForce;
+                        game.secretCooldowns.bouncyMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'bouncyMode');
+                    }, 15000);
+                }
+            },
+            'ArrowUpArrowUpSpaceSpace': () => {
+                // Sticky mode
+                if (!game.secretCooldowns.stickyMode) {
+                    game.secretCooldowns.stickyMode = true;
+                    game.activeEffects.push('stickyMode');
+                    const originalFriction = FRICTION;
+                    FRICTION = 0.95;
+                    setTimeout(() => {
+                        FRICTION = originalFriction;
+                        game.secretCooldowns.stickyMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'stickyMode');
+                    }, 15000);
+                }
+            },
+            'ArrowLeftArrowRightSpaceSpace': () => {
+                // Magnet mode
+                if (!game.secretCooldowns.magnetMode) {
+                    game.secretCooldowns.magnetMode = true;
+                    game.activeEffects.push('magnetMode');
+                    const originalSpawnChance = HEALTH_POTION.spawnChance;
+                    HEALTH_POTION.spawnChance = 0.3;
+                    setTimeout(() => {
+                        HEALTH_POTION.spawnChance = originalSpawnChance;
+                        game.secretCooldowns.magnetMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'magnetMode');
+                    }, 20000);
+                }
+            },
+            'SpaceSpaceArrowLeftArrowRight': () => {
+                // Shield mode
+                if (!game.secretCooldowns.shieldMode) {
+                    game.secretCooldowns.shieldMode = true;
+                    game.activeEffects.push('shieldMode');
+                    const originalInvulnerabilityTime = game.invulnerabilityTime;
+                    game.invulnerabilityTime = performance.now() + 15000;
+                    setTimeout(() => {
+                        game.invulnerabilityTime = originalInvulnerabilityTime;
+                        game.secretCooldowns.shieldMode = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'shieldMode');
+                    }, 15000);
+                }
+            },
+            'ArrowUpArrowDownSpaceSpace': () => {
+                // Double points
+                if (!game.secretCooldowns.doublePoints) {
+                    game.secretCooldowns.doublePoints = true;
+                    game.activeEffects.push('doublePoints');
+                    const originalScoreMultiplier = 1;
+                    game.scoreMultiplier = 2;
+                    setTimeout(() => {
+                        game.scoreMultiplier = originalScoreMultiplier;
+                        game.secretCooldowns.doublePoints = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'doublePoints');
+                    }, 30000);
+                }
+            },
+            'SpaceSpaceArrowDownArrowUp': () => {
+                // Time warp
+                if (!game.secretCooldowns.timeWarp) {
+                    game.secretCooldowns.timeWarp = true;
+                    game.activeEffects.push('timeWarp');
+                    const originalMoveSpeed = MOVE_SPEED;
+                    const originalHardMoveSpeed = HARD_MOVE_SPEED;
+                    const originalExtremeMoveSpeed = EXTREME_MOVE_SPEED;
+                    MOVE_SPEED *= 2;
+                    HARD_MOVE_SPEED *= 2;
+                    EXTREME_MOVE_SPEED *= 2;
+                    setTimeout(() => {
+                        MOVE_SPEED = originalMoveSpeed;
+                        HARD_MOVE_SPEED = originalHardMoveSpeed;
+                        EXTREME_MOVE_SPEED = originalExtremeMoveSpeed;
+                        game.secretCooldowns.timeWarp = false;
+                        game.activeEffects = game.activeEffects.filter(effect => effect !== 'timeWarp');
+                    }, 10000);
+                }
+            }
+        };
+
+        // Merge new shortcuts with existing ones
+        Object.assign(SECRET_COMBINATIONS, NEW_SECRET_COMBINATIONS);
+
         // Mobile controls
         const mobileControls = document.getElementById('mobileControls');
         const moveArea = document.getElementById('moveArea');
@@ -620,7 +880,8 @@
             startY: 100,
             jumpQueued: false,
             speedBoostEndTime: 0,
-            isSpeedBoosted: false
+            isSpeedBoosted: false,
+            color: '#FFD700'
         };
 
         const camera = {
@@ -630,13 +891,14 @@
         };
 
         const platforms = [];
-        const PLATFORM_SPACING = 200;  // Reduced from 250 to make jumps easier
+        const PLATFORM_SPACING = 180;
         const PLATFORM_WIDTH = 150;
         const PLATFORM_HEIGHT = 30;
         const PLATFORM_MIN_Y = 200;
         const PLATFORM_MAX_Y = 500;
-        const MAX_JUMP_DISTANCE = 250;  // Reduced from 300 to ensure jumps are possible
-        const MIN_JUMP_DISTANCE = 50;   // Added minimum jump distance
+        const MAX_JUMP_DISTANCE = 250;
+        const MIN_JUMP_DISTANCE = 50;
+        const SAFE_JUMP_MARGIN = 0.7; // 70% of max jump height for safety
         const SPIKE_START_DISTANCE = 2000;
         const SPIKE_CHANCE = 0.3;
         const HARD_SPIKE_CHANCE = 0.5;
@@ -777,10 +1039,9 @@
         // Initialize platforms
         function initPlatforms() {
             try {
-                // Clear existing platforms
                 platforms.length = 0;
 
-                // Create initial platform under the duck
+                // Initial platform
                 platforms.push({
                     x: duck.startX - PLATFORM_WIDTH/2,
                     y: duck.startY + 50,
@@ -791,60 +1052,42 @@
                     spikeX: 0
                 });
 
-                // Generate initial set of platforms
-                generatePlatforms(5);
+                // Generate initial platforms
+                generatePlatforms(8);
             } catch (error) {
                 console.error('Error initializing platforms:', error);
                 resetPlayer();
             }
         }
 
-        // Generate new platforms
+        // Simplified platform generation
         function generatePlatforms(count) {
             try {
                 const lastPlatform = platforms[platforms.length - 1];
                 if (!lastPlatform) return;
 
                 let lastX = lastPlatform.x + PLATFORM_SPACING;
-                const maxPlatforms = 200;
+                const screenRightEdge = camera.x + canvas.width + PLATFORM_SPACING * 2;
 
-                for (let i = 0; i < count && platforms.length < maxPlatforms; i++) {
-                    // Calculate maximum allowed Y based on last platform and jump physics
-                    const maxY = lastPlatform.y + MAX_JUMP_DISTANCE;
-                    const minY = Math.max(
-                        lastPlatform.y - MAX_JUMP_DISTANCE,
-                        PLATFORM_MIN_Y
-                    );
-                    
-                    // Calculate a safe Y position that ensures the jump is possible
-                    const jumpHeight = Math.abs(JUMP_FORCE) * Math.abs(JUMP_FORCE) / (2 * GRAVITY);
-                    const maxSafeHeight = jumpHeight * 0.8; // 80% of max jump height for safety
-                    
-                    // Ensure Y stays within safe jump distance
-                    const y = Math.min(
-                        Math.max(
-                            Math.random() * (maxY - minY) + minY,
-                            lastPlatform.y - maxSafeHeight
-                        ),
-                        lastPlatform.y + maxSafeHeight
-                    );
+                for (let i = 0; i < count; i++) {
+                    if (lastX > screenRightEdge) break;
+
+                    // Simple Y calculation
+                    const y = Math.random() * (PLATFORM_MAX_Y - PLATFORM_MIN_Y) + PLATFORM_MIN_Y;
 
                     const isHardMode = lastX > HARD_MODE_START;
                     const isExtremeMode = lastX > EXTREME_MODE_START;
                     const isUltimateMode = lastX > ULTIMATE_MODE_START;
                     
-                    // Determine platform type first
+                    // Platform type
                     let platformType = 'normal';
-                    if (isHardMode) {
-                        const speedBoostChance = isUltimateMode ? ULTIMATE_SPEED_BOOST_CHANCE :
-                                               (isExtremeMode ? EXTREME_SPEED_BOOST_CHANCE :
-                                               HARD_SPEED_BOOST_CHANCE);
-                        if (Math.random() < speedBoostChance) {
-                            platformType = 'speedboost';
-                        }
+                    if (isHardMode && Math.random() < (isUltimateMode ? ULTIMATE_SPEED_BOOST_CHANCE : 
+                                                      (isExtremeMode ? EXTREME_SPEED_BOOST_CHANCE : 
+                                                      HARD_SPEED_BOOST_CHANCE))) {
+                        platformType = 'speedboost';
                     }
                     
-                    // Determine if platform has spikes
+                    // Spikes
                     let hasSpikes = false;
                     if (isUltimateMode) {
                         hasSpikes = platformType === 'normal' && Math.random() < ULTIMATE_SPIKE_CHANCE;
@@ -854,73 +1097,53 @@
                         hasSpikes = lastX > SPIKE_START_DISTANCE && Math.random() < SPIKE_CHANCE;
                     }
                     
-                    // Calculate platform width and spike position
+                    // Platform width
                     const platformWidth = isUltimateMode ? ULTIMATE_PLATFORM_WIDTH :
                                         (isExtremeMode ? EXTREME_PLATFORM_WIDTH :
                                         (isHardMode ? HARD_PLATFORM_WIDTH : PLATFORM_WIDTH));
+                    
+                    // Spike position
                     const spikeX = lastX + (isHardMode ? platformWidth/2 - SPIKE_WIDTH/2 : SPIKE_OFFSET);
                     
-                    // Determine spike type
+                    // Spike type
                     let spikeType = 'normal';
                     if (isUltimateMode) {
-                        // Ultimate mode: fire 75%, toxic 10%, ice 15%, normal 0%
                         const rand = Math.random();
-                        if (rand < 0.75) {
-                            spikeType = 'fire';
-                        } else if (rand < 0.85) {
-                            spikeType = 'poison';
-                        } else {
-                            spikeType = 'ice';
-                        }
+                        if (rand < 0.75) spikeType = 'fire';
+                        else if (rand < 0.85) spikeType = 'poison';
+                        else spikeType = 'ice';
                     } else if (isExtremeMode) {
-                        // Extreme mode: normal 5%, fire 50%, ice 25%, toxic 20%
                         const rand = Math.random();
-                        if (rand < 0.05) {
-                            spikeType = 'normal';
-                        } else if (rand < 0.55) {
-                            spikeType = 'fire';
-                        } else if (rand < 0.80) {
-                            spikeType = 'ice';
-                        } else {
-                            spikeType = 'poison';
-                        }
+                        if (rand < 0.05) spikeType = 'normal';
+                        else if (rand < 0.55) spikeType = 'fire';
+                        else if (rand < 0.80) spikeType = 'ice';
+                        else spikeType = 'poison';
                     } else if (isHardMode) {
-                        // Hard mode: normal 35%, fire 15%, toxic 25%, ice 25%
                         const rand = Math.random();
-                        if (rand < 0.35) {
-                            spikeType = 'normal';
-                        } else if (rand < 0.50) {
-                            spikeType = 'fire';
-                        } else if (rand < 0.75) {
-                            spikeType = 'poison';
-                        } else {
-                            spikeType = 'ice';
-                        }
+                        if (rand < 0.35) spikeType = 'normal';
+                        else if (rand < 0.50) spikeType = 'fire';
+                        else if (rand < 0.75) spikeType = 'poison';
+                        else spikeType = 'ice';
                     } else {
-                        // Normal mode: normal 50%, fire 5%, toxic 35%, ice 10%
                         const rand = Math.random();
-                        if (rand < 0.50) {
-                            spikeType = 'normal';
-                        } else if (rand < 0.55) {
-                            spikeType = 'fire';
-                        } else if (rand < 0.90) {
-                            spikeType = 'poison';
-                        } else {
-                            spikeType = 'ice';
-                        }
+                        if (rand < 0.50) spikeType = 'normal';
+                        else if (rand < 0.55) spikeType = 'fire';
+                        else if (rand < 0.90) spikeType = 'poison';
+                        else spikeType = 'ice';
                     }
-                    
-                    // Add health potion with chance
+
+                    // Health potion
                     if (Math.random() < HEALTH_POTION.spawnChance) {
                         game.healthPotions.push({
                             x: lastX + platformWidth/2 - HEALTH_POTION.width/2,
-                            y: platform.y - HEALTH_POTION.height,
+                            y: y - HEALTH_POTION.height,
                             width: HEALTH_POTION.width,
                             height: HEALTH_POTION.height,
                             collected: false
                         });
                     }
 
+                    // Add platform
                     platforms.push({
                         x: lastX,
                         y: y,
@@ -933,11 +1156,12 @@
                         isExtremeMode: isExtremeMode,
                         isUltimateMode: isUltimateMode
                     });
+
                     lastX += PLATFORM_SPACING;
                 }
 
-                // Clean up old platforms and potions
-                const cleanupThreshold = duck.x - canvas.width * 2;
+                // Clean up old platforms
+                const cleanupThreshold = camera.x - PLATFORM_SPACING;
                 platforms = platforms.filter(platform => platform.x > cleanupThreshold);
                 game.healthPotions = game.healthPotions.filter(potion => 
                     potion.x > cleanupThreshold && !potion.collected
@@ -966,37 +1190,8 @@
                 // Reset camera
                 camera.x = 0;
                 
-                // Clear platforms
-                platforms.length = 0;
-                
-                // Create initial platform
-                platforms.push({
-                    x: duck.startX - PLATFORM_WIDTH/2,
-                    y: duck.startY + 50,
-                    width: PLATFORM_WIDTH,
-                    height: PLATFORM_HEIGHT,
-                    type: 'normal',
-                    hasSpikes: false,
-                    spikeX: 0
-                });
-
-                // Generate initial platforms
-                for (let i = 0; i < 5; i++) {
-                    const lastPlatform = platforms[platforms.length - 1];
-                    const lastX = lastPlatform.x + PLATFORM_SPACING;
-                    const y = Math.random() * (PLATFORM_MAX_Y - PLATFORM_MIN_Y) + PLATFORM_MIN_Y;
-                    const hasSpikes = lastX > SPIKE_START_DISTANCE && Math.random() < SPIKE_CHANCE;
-                    
-                    platforms.push({
-                        x: lastX,
-                        y: y,
-                        width: PLATFORM_WIDTH,
-                        height: PLATFORM_HEIGHT,
-                        type: 'normal',
-                        hasSpikes: hasSpikes,
-                        spikeX: lastX + SPIKE_OFFSET
-                    });
-                }
+                // Initialize platforms
+                initPlatforms();
 
                 // Reset game state
                 game.lastFrameTime = performance.now();
@@ -1258,9 +1453,9 @@
                     }
                 }
 
-                // Generate new platforms more aggressively
+                // Generate new platforms
                 const lastPlatform = platforms[platforms.length - 1];
-                if (lastPlatform && duck.x > lastPlatform.x - canvas.width) {
+                if (lastPlatform && lastPlatform.x < camera.x + canvas.width + PLATFORM_SPACING) {
                     generatePlatforms(5);
                 }
 
@@ -1270,7 +1465,6 @@
 
                 // Health regeneration with damage cooldown check
                 if (currentTime - game.lastRegenTime >= game.regenInterval) {
-                    // Only regenerate if enough time has passed since last damage
                     if (game.health < game.maxHealth && 
                         currentTime - game.lastDamageTime >= game.damageCooldown) {
                         heal(game.regenAmount);
@@ -1302,6 +1496,17 @@
             try {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+                // Draw sun
+                SUN.x = canvas.width - 100;
+                SUN.y = 100;
+                drawSun();
+
+                // Draw mountains
+                drawMountains();
+
+                // Draw ground
+                drawGround();
+
                 // Draw clouds
                 for (const cloud of clouds) {
                     drawCloud(cloud.x, cloud.y, cloud.width, cloud.height);
@@ -1313,6 +1518,11 @@
                 // Draw platforms
                 for (const platform of platforms) {
                     if (!platform) continue;
+
+                    // Only draw platforms that are visible
+                    if (platform.x + platform.width < camera.x || platform.x > camera.x + canvas.width) {
+                        continue;
+                    }
 
                     // Draw platform
                     if (platform.type === 'speedboost') {
@@ -1371,7 +1581,7 @@
                 }
 
                 // Draw duck body
-                ctx.fillStyle = '#FFD700';
+                ctx.fillStyle = duck.color;
                 ctx.fillRect(duck.x, duck.y, duck.width, duck.height);
 
                 // Draw duck face
@@ -1450,6 +1660,7 @@
                 checkMobile();
                 game.lastFrameTime = performance.now();
                 initClouds();
+                initMountains();
                 resetPlayer();
                 requestAnimationFrame(gameLoop);
             } catch (error) {
