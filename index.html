@@ -500,60 +500,130 @@
             }
         };
 
+        // Cloud types and probabilities
+        const CLOUD_TYPES = {
+            normal: { probability: 0.50, color: 'rgba(255, 255, 255, 0.8)' },
+            thunder: { probability: 0.05, color: 'rgba(100, 100, 100, 0.9)' },
+            rain: { probability: 0.25, color: 'rgba(200, 200, 200, 0.7)' },
+            none: { probability: 0.20, color: null }
+        };
+
+        // Mountain types and probabilities
+        const MOUNTAIN_TYPES = {
+            normal: { probability: 0.50, color: 'rgba(139, 69, 19, 0.7)' },
+            volcano: { probability: 0.05, color: 'rgba(139, 0, 0, 0.8)' },
+            none: { probability: 0.20, color: null },
+            snowy: { probability: 0.25, color: 'rgba(255, 255, 255, 0.9)' }
+        };
+
+        // Sun types and probabilities
+        const SUN_TYPES = {
+            normal: { probability: 0.99, color: '#FFD700', radius: 60 },
+            supernova: { probability: 0.01, color: '#FF4500', radius: 100 }
+        };
+
         // Add mountains and sun
         const mountains = [];
         const MOUNTAIN_COUNT = 5;
         const SUN = {
             x: 0,
             y: 0,
-            radius: 60,
-            color: '#FFD700'
+            type: getRandomType(SUN_TYPES)
         };
+
+        function getRandomType(types) {
+            const rand = Math.random();
+            let cumulative = 0;
+            for (const [type, data] of Object.entries(types)) {
+                cumulative += data.probability;
+                if (rand <= cumulative) return type;
+            }
+            return Object.keys(types)[0];
+        }
 
         function initMountains() {
             for (let i = 0; i < MOUNTAIN_COUNT; i++) {
+                const mountainType = getRandomType(MOUNTAIN_TYPES);
+                if (mountainType === 'none') continue;
+
+                const mountainData = MOUNTAIN_TYPES[mountainType];
                 mountains.push({
                     x: Math.random() * canvas.width * 2,
                     y: canvas.height - 100,
                     width: 200 + Math.random() * 300,
                     height: 150 + Math.random() * 200,
-                    color: `rgba(139, 69, 19, ${0.3 + Math.random() * 0.4})`
+                    type: mountainType,
+                    color: mountainData.color
                 });
             }
         }
 
         function drawMountains() {
             for (const mountain of mountains) {
+                if (!mountain.color) continue;
+
                 ctx.fillStyle = mountain.color;
                 ctx.beginPath();
                 ctx.moveTo(mountain.x, mountain.y);
                 ctx.lineTo(mountain.x + mountain.width/2, mountain.y - mountain.height);
                 ctx.lineTo(mountain.x + mountain.width, mountain.y);
                 ctx.fill();
+
+                // Add effects based on mountain type
+                if (mountain.type === 'volcano') {
+                    // Draw lava
+                    ctx.fillStyle = 'rgba(255, 69, 0, 0.6)';
+                    ctx.beginPath();
+                    ctx.moveTo(mountain.x + mountain.width/2, mountain.y - mountain.height);
+                    ctx.lineTo(mountain.x + mountain.width/2 - 20, mountain.y - mountain.height + 30);
+                    ctx.lineTo(mountain.x + mountain.width/2 + 20, mountain.y - mountain.height + 30);
+                    ctx.fill();
+                } else if (mountain.type === 'snowy') {
+                    // Draw snow cap
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.beginPath();
+                    ctx.moveTo(mountain.x + mountain.width/2 - 30, mountain.y - mountain.height + 20);
+                    ctx.lineTo(mountain.x + mountain.width/2, mountain.y - mountain.height);
+                    ctx.lineTo(mountain.x + mountain.width/2 + 30, mountain.y - mountain.height + 20);
+                    ctx.fill();
+                }
             }
         }
 
         function drawSun() {
-            ctx.fillStyle = SUN.color;
+            const sunData = SUN_TYPES[SUN.type];
+            ctx.fillStyle = sunData.color;
             ctx.beginPath();
-            ctx.arc(SUN.x, SUN.y, SUN.radius, 0, Math.PI * 2);
+            ctx.arc(SUN.x, SUN.y, sunData.radius, 0, Math.PI * 2);
             ctx.fill();
 
             // Add sun rays
-            ctx.strokeStyle = SUN.color;
+            ctx.strokeStyle = sunData.color;
             ctx.lineWidth = 3;
             for (let i = 0; i < 8; i++) {
                 const angle = (i * Math.PI) / 4;
                 ctx.beginPath();
                 ctx.moveTo(
-                    SUN.x + Math.cos(angle) * SUN.radius,
-                    SUN.y + Math.sin(angle) * SUN.radius
+                    SUN.x + Math.cos(angle) * sunData.radius,
+                    SUN.y + Math.sin(angle) * sunData.radius
                 );
                 ctx.lineTo(
-                    SUN.x + Math.cos(angle) * (SUN.radius + 20),
-                    SUN.y + Math.sin(angle) * (SUN.radius + 20)
+                    SUN.x + Math.cos(angle) * (sunData.radius + 20),
+                    SUN.y + Math.sin(angle) * (sunData.radius + 20)
                 );
                 ctx.stroke();
+            }
+
+            // Add supernova effects
+            if (SUN.type === 'supernova') {
+                // Draw energy waves
+                for (let i = 0; i < 3; i++) {
+                    ctx.strokeStyle = `rgba(255, 69, 0, ${0.3 - i * 0.1})`;
+                    ctx.lineWidth = 5 - i;
+                    ctx.beginPath();
+                    ctx.arc(SUN.x, SUN.y, sunData.radius + 30 + i * 20, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
             }
         }
 
@@ -585,7 +655,7 @@
 
         // Add new shortcuts
         const NEW_SECRET_COMBINATIONS = {
-            'ArrowUpArrowDownArrowLeftArrowRight': () => {
+            'ArrowUpArrowDownArrowLeftArrowRight': function() {
                 // Rainbow mode
                 if (!game.secretCooldowns.rainbowMode) {
                     game.secretCooldowns.rainbowMode = true;
@@ -607,7 +677,7 @@
                     }, 15000);
                 }
             },
-            'ArrowDownArrowUpArrowRightArrowLeft': () => {
+            'ArrowDownArrowUpArrowRightArrowLeft': function() {
                 // Ghost mode
                 if (!game.secretCooldowns.ghostMode) {
                     game.secretCooldowns.ghostMode = true;
@@ -620,7 +690,7 @@
                     }, 10000);
                 }
             },
-            'ArrowLeftArrowRightArrowUpArrowDown': () => {
+            'ArrowLeftArrowRightArrowUpArrowDown': function() {
                 // Tiny mode
                 if (!game.secretCooldowns.tinyMode) {
                     game.secretCooldowns.tinyMode = true;
@@ -636,7 +706,7 @@
                     }, 12000);
                 }
             },
-            'ArrowRightArrowLeftArrowDownArrowUp': () => {
+            'ArrowRightArrowLeftArrowDownArrowUp': function() {
                 // Giant mode
                 if (!game.secretCooldowns.giantMode) {
                     game.secretCooldowns.giantMode = true;
@@ -652,7 +722,7 @@
                     }, 12000);
                 }
             },
-            'SpaceSpaceArrowUpArrowUp': () => {
+            'SpaceSpaceArrowUpArrowUp': function() {
                 // Bouncy mode
                 if (!game.secretCooldowns.bouncyMode) {
                     game.secretCooldowns.bouncyMode = true;
@@ -666,7 +736,7 @@
                     }, 15000);
                 }
             },
-            'ArrowUpArrowUpSpaceSpace': () => {
+            'ArrowUpArrowUpSpaceSpace': function() {
                 // Sticky mode
                 if (!game.secretCooldowns.stickyMode) {
                     game.secretCooldowns.stickyMode = true;
@@ -680,7 +750,7 @@
                     }, 15000);
                 }
             },
-            'ArrowLeftArrowRightSpaceSpace': () => {
+            'ArrowLeftArrowRightSpaceSpace': function() {
                 // Magnet mode
                 if (!game.secretCooldowns.magnetMode) {
                     game.secretCooldowns.magnetMode = true;
@@ -694,7 +764,7 @@
                     }, 20000);
                 }
             },
-            'SpaceSpaceArrowLeftArrowRight': () => {
+            'SpaceSpaceArrowLeftArrowRight': function() {
                 // Shield mode
                 if (!game.secretCooldowns.shieldMode) {
                     game.secretCooldowns.shieldMode = true;
@@ -708,7 +778,7 @@
                     }, 15000);
                 }
             },
-            'ArrowUpArrowDownSpaceSpace': () => {
+            'ArrowUpArrowDownSpaceSpace': function() {
                 // Double points
                 if (!game.secretCooldowns.doublePoints) {
                     game.secretCooldowns.doublePoints = true;
@@ -722,7 +792,7 @@
                     }, 30000);
                 }
             },
-            'SpaceSpaceArrowDownArrowUp': () => {
+            'SpaceSpaceArrowDownArrowUp': function() {
                 // Time warp
                 if (!game.secretCooldowns.timeWarp) {
                     game.secretCooldowns.timeWarp = true;
@@ -1209,11 +1279,15 @@
 
         function initClouds() {
             for (let i = 0; i < CLOUD_COUNT; i++) {
+                const cloudType = getRandomType(CLOUD_TYPES);
+                if (cloudType === 'none') continue;
+
                 clouds.push({
                     x: Math.random() * canvas.width,
                     y: Math.random() * (canvas.height / 2),
                     width: 60 + Math.random() * 40,
-                    height: 30 + Math.random() * 20
+                    height: 30 + Math.random() * 20,
+                    type: cloudType
                 });
             }
         }
@@ -1228,14 +1302,41 @@
             }
         }
 
-        function drawCloud(x, y, width, height) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        function drawCloud(x, y, width, height, type) {
+            const cloudData = CLOUD_TYPES[type];
+            if (!cloudData || !cloudData.color) return;
+
+            ctx.fillStyle = cloudData.color;
             ctx.beginPath();
             ctx.arc(x, y, width/3, 0, Math.PI * 2);
             ctx.arc(x + width/3, y - height/4, width/4, 0, Math.PI * 2);
             ctx.arc(x + width/2, y, width/3, 0, Math.PI * 2);
             ctx.arc(x + width/3, y + height/4, width/4, 0, Math.PI * 2);
             ctx.fill();
+
+            // Add effects based on cloud type
+            if (type === 'thunder') {
+                // Draw lightning
+                if (Math.random() < 0.1) {
+                    ctx.strokeStyle = '#FFFF00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x + width/2, y + height);
+                    ctx.lineTo(x + width/2, y + height + 30);
+                    ctx.stroke();
+                }
+            } else if (type === 'rain') {
+                // Draw rain
+                ctx.strokeStyle = 'rgba(200, 200, 255, 0.5)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 5; i++) {
+                    const rainX = x + (width * i / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(rainX, y + height);
+                    ctx.lineTo(rainX - 5, y + height + 15);
+                    ctx.stroke();
+                }
+            }
         }
 
         // Update health bar
@@ -1499,7 +1600,7 @@
 
                 // Draw clouds
                 for (const cloud of clouds) {
-                    drawCloud(cloud.x, cloud.y, cloud.width, cloud.height);
+                    drawCloud(cloud.x, cloud.y, cloud.width, cloud.height, cloud.type);
                 }
 
                 ctx.save();
